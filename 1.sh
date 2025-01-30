@@ -6,13 +6,15 @@ if [ ! -t 0 ]; then
     WORK_DIR="$HOME/cloudfront-docker"
     mkdir -p "$WORK_DIR"
     
-    # 保存输入到临时文件
+    # 保存脚本到临时文件
     TMP_FILE=$(mktemp)
     cat > "$TMP_FILE"
     
-    # 复制到目标位置
-    cp "$TMP_FILE" "$WORK_DIR/setup_cloudfront.sh"
-    rm -f "$TMP_FILE"
+    # 确保目录存在
+    mkdir -p "$WORK_DIR"
+    
+    # 复制到目标位置并设置权限
+    mv "$TMP_FILE" "$WORK_DIR/setup_cloudfront.sh"
     chmod +x "$WORK_DIR/setup_cloudfront.sh"
     
     # 提示用户
@@ -20,8 +22,8 @@ if [ ! -t 0 ]; then
     echo -e "请执行以下命令进入管理界面："
     echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh"
     
-    # 确保完全退出
-    kill -9 $$
+    # 正常退出
+    exit 0
 fi
 
 # 颜色定义
