@@ -29,6 +29,8 @@ error() {
 check_system() {
     if [ -f "/etc/openwrt_version" ]; then
         echo "openwrt"
+    elif [ -f "/etc/lsb-release" ] && grep -q "Ubuntu" /etc/lsb-release; then
+        echo "ubuntu"
     elif [ -f "/etc/debian_version" ]; then
         echo "debian"
     elif [ -f "/etc/redhat-release" ]; then
@@ -63,6 +65,30 @@ install_docker() {
                 /etc/init.d/docker enable
                 /etc/init.d/docker start
                 ;;
+            ubuntu)
+                # 安装依赖
+                apt-get update
+                apt-get install -y ca-certificates curl gnupg
+                
+                # 添加Docker官方GPG密钥
+                install -m 0755 -d /etc/apt/keyrings
+                curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                chmod a+r /etc/apt/keyrings/docker.gpg
+                
+                # 添加Docker仓库
+                echo \
+                "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+                "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+                tee /etc/apt/sources.list.d/docker.list > /dev/null
+                
+                # 安装Docker
+                apt-get update
+                apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+                
+                # 启动Docker
+                systemctl enable docker || true
+                systemctl start docker || service docker start
+                ;;
             debian)
                 # 安装依赖
                 apt-get update
@@ -79,8 +105,8 @@ install_docker() {
                 apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
                 
                 # 启动Docker
-                systemctl enable docker
-                systemctl start docker
+                systemctl enable docker || true
+                systemctl start docker || service docker start
                 ;;
             redhat)
                 # 安装依赖
@@ -93,8 +119,8 @@ install_docker() {
                 yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
                 
                 # 启动Docker
-                systemctl enable docker
-                systemctl start docker
+                systemctl enable docker || true
+                systemctl start docker || service docker start
                 ;;
             *)
                 error "不支持的系统类型"
@@ -118,9 +144,11 @@ install_docker() {
             openwrt)
                 opkg install docker-compose
                 ;;
-            debian|redhat)
-                curl -L "https://github.com/docker/compose/releases/download/v2.5.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-                chmod +x /usr/local/bin/docker-compose
+            ubuntu|debian|redhat)
+                if ! command -v docker compose &> /dev/null; then
+                    curl -L "https://github.com/docker/compose/releases/download/v2.5.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                    chmod +x /usr/local/bin/docker-compose
+                fi
                 ;;
         esac
     fi
