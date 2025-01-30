@@ -8,10 +8,12 @@ mkdir -p "$WORK_DIR"
 curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/install.sh -o "$WORK_DIR/install.sh"
 chmod +x "$WORK_DIR/install.sh"
 
-# 提示用户
-echo -e "\033[0;32m[INFO]\033[0m 安装完成"
-echo -e "请执行以下命令进入管理界面："
-echo -e "  cd $WORK_DIR && ./install.sh"
+# 确保文件写入完成
+sync
+sleep 1
+
+# 直接执行脚本
+cd "$WORK_DIR" && ./install.sh
 
 exit 0
 
