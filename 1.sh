@@ -2,38 +2,6 @@
 mkdir -p ~/cloudfront-docker
 cd ~/cloudfront-docker
 
-# 下载脚本本身并重命名
-if [ ! -f "setup_cloudfront.sh" ]; then
-    curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/1.sh -o setup_cloudfront.sh
-    chmod +x setup_cloudfront.sh
-fi
-
-# 创建Dockerfile
-cat > Dockerfile << 'EOF'
-FROM python:3.9-alpine
-
-WORKDIR /app
-
-RUN apk add --no-cache \
-    curl \
-    iputils \
-    jq \
-    bc
-
-COPY cloudfront_selector.py .
-
-RUN mkdir -p /data
-
-ENV THRESHOLD=80 \
-    PING_COUNT=5 \
-    RESULT_DIR=/data
-
-ENTRYPOINT ["python3", "cloudfront_selector.py"]
-EOF
-
-cat > setup_cloudfront.sh << 'EOF'
-#!/bin/bash
-
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -333,15 +301,5 @@ main() {
     done
 }
 
-# 如果是通过curl|bash方式运行，则执行安装
-if [ ! -f "$0" ] || [ "$0" = "bash" ]; then
-    exec ./setup_cloudfront.sh
-    exit 0
-fi
-
-# 运行主函数
+# 直接运行主函数
 main
-EOF
-
-# 添加执行权限
-chmod +x setup_cloudfront.sh
