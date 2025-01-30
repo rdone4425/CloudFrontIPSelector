@@ -1,3 +1,16 @@
+#!/bin/bash
+
+# 如果是通过管道执行，先保存脚本
+if [ ! -t 0 ]; then
+    SCRIPT_DIR="$HOME/cloudfront-docker"
+    mkdir -p "$SCRIPT_DIR"
+    cd "$SCRIPT_DIR"
+    tee setup_cloudfront.sh > /dev/null
+    chmod +x setup_cloudfront.sh
+    exec bash setup_cloudfront.sh "$@"
+    exit 0
+fi
+
 # 创建目录
 mkdir -p ~/cloudfront-docker
 cd ~/cloudfront-docker
