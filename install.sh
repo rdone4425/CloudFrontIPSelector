@@ -30,9 +30,9 @@ if [ ! -t 0 ]; then
     # 确保文件写入完成
     sync
     
-    # 提示用户
-    echo -e "\033[0;32m[INFO]\033[0m 安装完成"
-    echo -e "请执行以下命令进入管理界面："
+# 提示用户
+echo -e "\033[0;32m[INFO]\033[0m 安装完成"
+echo -e "请执行以下命令进入管理界面："
     echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh"
     
     # 等待一下再退出
@@ -680,7 +680,7 @@ start_service() {
         
         $COMPOSE_CMD down 2>/dev/null
         $COMPOSE_CMD up -d
-        
+
         if [ $? -eq 0 ]; then
             info "服务启动成功"
             info "使用以下命令查看日志:"
@@ -795,8 +795,7 @@ show_menu() {
                     ;;
                 0)
                     echo -e "${GREEN}感谢使用，再见！${NC}"
-                    exit 0
-                    ;;
+exit 0                    ;;
                 *)
                     warn "请输入0-1之间的数字"
                     sleep 1
