@@ -25,6 +25,19 @@ error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# 检查系统类型
+check_system() {
+    if [ -f "/etc/openwrt_version" ]; then
+        echo "openwrt"
+    elif [ -f "/etc/debian_version" ]; then
+        echo "debian"
+    elif [ -f "/etc/redhat-release" ]; then
+        echo "redhat"
+    else
+        echo "unknown"
+    fi
+}
+
 # 检查命令是否存在
 check_command() {
     if ! command -v $1 &> /dev/null; then
@@ -39,10 +52,56 @@ install_docker() {
     info "检查Docker安装..."
     if ! check_command docker; then
         info "开始安装Docker..."
-        opkg update
-        opkg install docker
-        /etc/init.d/docker enable
-        /etc/init.d/docker start
+        
+        # 获取系统类型
+        SYS_TYPE=$(check_system)
+        
+        case $SYS_TYPE in
+            openwrt)
+                opkg update
+                opkg install docker
+                /etc/init.d/docker enable
+                /etc/init.d/docker start
+                ;;
+            debian)
+                # 安装依赖
+                apt-get update
+                apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+                
+                # 添加Docker GPG密钥
+                curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+                
+                # 添加Docker仓库
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+                
+                # 安装Docker
+                apt-get update
+                apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+                
+                # 启动Docker
+                systemctl enable docker
+                systemctl start docker
+                ;;
+            redhat)
+                # 安装依赖
+                yum install -y yum-utils
+                
+                # 添加Docker仓库
+                yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+                
+                # 安装Docker
+                yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+                
+                # 启动Docker
+                systemctl enable docker
+                systemctl start docker
+                ;;
+            *)
+                error "不支持的系统类型"
+                exit 1
+                ;;
+        esac
+        
         sleep 3
         
         if ! check_command docker; then
@@ -51,6 +110,21 @@ install_docker() {
         fi
     fi
     info "Docker已安装"
+    
+    # 安装docker-compose
+    if ! check_command docker-compose; then
+        info "安装docker-compose..."
+        case $SYS_TYPE in
+            openwrt)
+                opkg install docker-compose
+                ;;
+            debian|redhat)
+                curl -L "https://github.com/docker/compose/releases/download/v2.5.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                chmod +x /usr/local/bin/docker-compose
+                ;;
+        esac
+    fi
+    info "docker-compose已安装"
 }
 
 # 创建必要的目录和文件
