@@ -460,20 +460,52 @@ main() {
     # 设置信号处理
     trap handle_sigint SIGINT
     
-    info "开始安装CloudFront IP选择器..."
-    
-    # 检查并安装Docker
-    install_docker
-    
-    # 创建必要的文件
-    create_files
-    
-    # 启动服务
-    start_service
-    
-    # 显示菜单
-    show_menu
+    # 检查是否通过管道执行
+    if [ ! -t 0 ]; then
+        info "开始安装CloudFront IP选择器..."
+        
+        # 检查并安装Docker
+        install_docker
+        
+        # 创建必要的文件
+        create_files
+        
+        # 启动服务
+        start_service
+        
+        # 提示用户如何进入交互模式
+        echo -e "\n${GREEN}=== 安装完成 ===${NC}"
+        echo -e "请执行以下命令进入交互模式："
+        echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh --menu"
+        
+        # 保存当前脚本
+        cp "$0" "$WORK_DIR/setup_cloudfront.sh"
+        chmod +x "$WORK_DIR/setup_cloudfront.sh"
+        
+        exit 0
+    else
+        # 检查是否是菜单模式
+        if [ "$1" = "--menu" ]; then
+            # 显示菜单
+            show_menu
+        else
+            # 直接执行完整流程
+            info "开始安装CloudFront IP选择器..."
+            
+            # 检查并安装Docker
+            install_docker
+            
+            # 创建必要的文件
+            create_files
+            
+            # 启动服务
+            start_service
+            
+            # 显示菜单
+            show_menu
+        fi
+    fi
 }
 
-# 直接运行主函数
-main
+# 直接运行主函数，传递所有参数
+main "$@"
