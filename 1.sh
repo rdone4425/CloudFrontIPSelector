@@ -2,6 +2,12 @@
 mkdir -p ~/cloudfront-docker
 cd ~/cloudfront-docker
 
+# 下载脚本本身并重命名
+if [ ! -f "setup_cloudfront.sh" ]; then
+    curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/1.sh -o setup_cloudfront.sh
+    chmod +x setup_cloudfront.sh
+fi
+
 # 创建Dockerfile
 cat > Dockerfile << 'EOF'
 FROM python:3.9-alpine
@@ -317,6 +323,12 @@ main() {
     
     # 创建必要的文件
     create_files
+    
+    # 如果是通过curl|bash方式运行，则保存并执行脚本
+    if [ ! -f "$0" ] || [ "$0" = "bash" ]; then
+        exec ./setup_cloudfront.sh
+        exit 0
+    fi
     
     # 显示菜单
     while true; do
