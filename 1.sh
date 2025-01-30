@@ -7,8 +7,12 @@ if [ ! -t 0 ]; then
     mkdir -p "$WORK_DIR"
     cd "$WORK_DIR"
     
-    # 保存脚本并继续执行
-    tee setup_cloudfront.sh | bash
+    # 保存脚本
+    tee setup_cloudfront.sh > /dev/null
+    chmod +x setup_cloudfront.sh
+    
+    # 执行保存的脚本
+    exec ./setup_cloudfront.sh
     exit 0
 fi
 
