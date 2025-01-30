@@ -16,7 +16,7 @@ CloudFrontIPSelector是一个用来选择连接延迟最低的CloudFront IP的�
 
 # 方式1：直接运行（推荐）
 ```bash
-curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/1.sh | bash
+curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/install.sh | bash
 ```
 
 ## 使用说明
