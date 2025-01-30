@@ -1,21 +1,27 @@
 #!/bin/bash
 
-# 如果是通过管道执行，先保存脚本
+# 检查是否通过管道执行
 if [ ! -t 0 ]; then
     # 创建工作目录
     WORK_DIR="$HOME/cloudfront-docker"
     mkdir -p "$WORK_DIR"
-    cd "$WORK_DIR"
     
-    # 保存脚本并设置权限
-    cat > setup_cloudfront.sh
-    chmod +x setup_cloudfront.sh
+    # 保存输入到临时文件
+    TMP_FILE=$(mktemp)
+    cat > "$TMP_FILE"
+    
+    # 复制到目标位置
+    cp "$TMP_FILE" "$WORK_DIR/setup_cloudfront.sh"
+    rm -f "$TMP_FILE"
+    chmod +x "$WORK_DIR/setup_cloudfront.sh"
     
     # 提示用户
-    echo -e "\n${GREEN}=== 安装完成 ===${NC}"
+    echo -e "\033[0;32m[INFO]\033[0m 安装完成"
     echo -e "请执行以下命令进入管理界面："
     echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh"
-    exit 0
+    
+    # 确保完全退出
+    kill -9 $$
 fi
 
 # 颜色定义
@@ -881,25 +887,6 @@ show_menu() {
 main() {
     # 设置信号处理
     trap handle_sigint SIGINT
-    
-    # 检查是否通过管道执行
-    if [ ! -t 0 ]; then
-        info "通过管道执行安装..."
-        
-        # 创建工作目录
-        WORK_DIR="$HOME/cloudfront-docker"
-        mkdir -p "$WORK_DIR"
-        
-        # 保存脚本
-        cat > "$WORK_DIR/setup_cloudfront.sh"
-        chmod +x "$WORK_DIR/setup_cloudfront.sh"
-        
-        # 提示用户
-        echo -e "\n${GREEN}=== 安装完成 ===${NC}"
-        echo -e "请执行以下命令进入管理界面："
-        echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh"
-        exit 0
-    fi
     
     # 直接显示菜单
     show_menu
