@@ -620,14 +620,22 @@ main() {
         tee "$WORK_DIR/setup_cloudfront.sh" > /dev/null
         chmod +x "$WORK_DIR/setup_cloudfront.sh"
         
-        # 执行安装并进入菜单
+        # 执行安装
         info "开始安装CloudFront IP选择器..."
         install_docker
         create_files
         start_service
         
-        # 直接进入菜单
-        show_menu
+        # 等待并显示结果
+        info "等待测试结果..."
+        sleep 5  # 等待服务启动
+        wait_for_result 300 5  # 等待5分钟,至少5个IP
+        
+        # 提示如何进入菜单
+        echo -e "\n${GREEN}=== 安装完成 ===${NC}"
+        echo -e "执行以下命令进入交互式菜单:"
+        echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh --menu"
+        
         exit 0
     fi
     
