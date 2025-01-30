@@ -393,54 +393,73 @@ start_service() {
     fi
 }
 
+# 处理Ctrl+C信号
+handle_sigint() {
+    echo -e "\n${YELLOW}正在退出...${NC}"
+    exit 0
+}
+
 # 主菜单
 show_menu() {
-    echo -e "\n${GREEN}=== CloudFront IP选择器 ===${NC}"
-    echo "1. 启动服务"
-    echo "2. 停止服务"
-    echo "3. 查看日志"
-    echo "4. 查看结果"
-    echo "5. 重启服务"
-    echo "0. 退出"
-    
-    read -p "请选择操作 [0-5]: " choice
-    
-    COMPOSE_CMD=$(get_compose_cmd)
-    
-    case $choice in
-        1)
-            start_service
-            ;;
-        2)
-            cd "$WORK_DIR" && $COMPOSE_CMD down
-            info "服务已停止"
-            ;;
-        3)
-            cd "$WORK_DIR" && $COMPOSE_CMD logs -f
-            ;;
-        4)
-            if [ -f "$DATA_DIR/result.txt" ]; then
-                echo -e "\n${GREEN}=== 测试结果 ===${NC}"
-                cat "$DATA_DIR/result.txt"
-            else
-                warn "结果文件不存在"
-            fi
-            ;;
-        5)
-            cd "$WORK_DIR" && $COMPOSE_CMD restart
-            info "服务已重启"
-            ;;
-        0)
-            exit 0
-            ;;
-        *)
-            warn "无效的选择"
-            ;;
-    esac
+    # 获取compose命令(只在第一次调用时获取)
+    if [ -z "$COMPOSE_CMD" ]; then
+        COMPOSE_CMD=$(get_compose_cmd)
+        if [ -z "$COMPOSE_CMD" ]; then
+            error "未找到可用的docker compose命令"
+            exit 1
+        fi
+    fi
+
+    while true; do
+        echo -e "\n${GREEN}=== CloudFront IP选择器 ===${NC}"
+        echo "1. 启动服务"
+        echo "2. 停止服务"
+        echo "3. 查看日志"
+        echo "4. 查看结果"
+        echo "5. 重启服务"
+        echo "0. 退出"
+        
+        read -p "请选择操作 [0-5]: " choice
+        
+        case $choice in
+            1)
+                start_service
+                ;;
+            2)
+                cd "$WORK_DIR" && $COMPOSE_CMD down
+                info "服务已停止"
+                ;;
+            3)
+                cd "$WORK_DIR" && $COMPOSE_CMD logs -f
+                ;;
+            4)
+                if [ -f "$DATA_DIR/result.txt" ]; then
+                    echo -e "\n${GREEN}=== 测试结果 ===${NC}"
+                    cat "$DATA_DIR/result.txt"
+                else
+                    warn "结果文件不存在"
+                fi
+                ;;
+            5)
+                cd "$WORK_DIR" && $COMPOSE_CMD restart
+                info "服务已重启"
+                ;;
+            0)
+                echo -e "${GREEN}感谢使用，再见！${NC}"
+                exit 0
+                ;;
+            *)
+                warn "请输入0-5之间的数字"
+                ;;
+        esac
+    done
 }
 
 # 主函数
 main() {
+    # 设置信号处理
+    trap handle_sigint SIGINT
+    
     info "开始安装CloudFront IP选择器..."
     
     # 检查并安装Docker
@@ -453,9 +472,7 @@ main() {
     start_service
     
     # 显示菜单
-    while true; do
-        show_menu
-    done
+    show_menu
 }
 
 # 直接运行主函数
