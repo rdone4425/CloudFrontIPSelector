@@ -1,12 +1,23 @@
 #!/bin/bash
 
+# 保存脚本内容到临时文件
+TEMP_SCRIPT=$(mktemp)
+cat > "$TEMP_SCRIPT"
+
 # 如果是通过管道执行，先保存脚本
 if [ ! -t 0 ]; then
     SCRIPT_DIR="$HOME/cloudfront-docker"
     mkdir -p "$SCRIPT_DIR"
     cd "$SCRIPT_DIR"
-    tee setup_cloudfront.sh > /dev/null
+    
+    # 复制临时文件到目标位置
+    cp "$TEMP_SCRIPT" setup_cloudfront.sh
     chmod +x setup_cloudfront.sh
+    
+    # 清理临时文件
+    rm -f "$TEMP_SCRIPT"
+    
+    # 执行保存的脚本
     exec bash setup_cloudfront.sh "$@"
     exit 0
 fi
