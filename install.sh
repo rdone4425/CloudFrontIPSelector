@@ -291,7 +291,7 @@ check_update() {
     info "检查更新..."
     local latest_version=$(curl -s https://api.github.com/repos/rdone4425/CloudFrontIPSelector/releases/latest | grep tag_name | cut -d'"' -f4)
     if [ -n "$latest_version" ] && [ "$latest_version" != "$VERSION" ]; then
-        info "发现新版本: $latest_version (当前版本: $VERSION)"
+        info "发现新版本: $latest_version \(当前版本: $VERSION\)"
         echo -n "是否更新? [y/N] "
         read -r answer
         if [[ $answer =~ ^[Yy]$ ]]; then
