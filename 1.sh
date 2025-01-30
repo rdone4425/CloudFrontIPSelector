@@ -324,17 +324,20 @@ main() {
     # 创建必要的文件
     create_files
     
-    # 如果是通过curl|bash方式运行，则保存并执行脚本
-    if [ ! -f "$0" ] || [ "$0" = "bash" ]; then
-        exec ./setup_cloudfront.sh
-        exit 0
-    fi
+    # 启动服务
+    start_service
     
     # 显示菜单
     while true; do
         show_menu
     done
 }
+
+# 如果是通过curl|bash方式运行，则执行安装
+if [ ! -f "$0" ] || [ "$0" = "bash" ]; then
+    exec ./setup_cloudfront.sh
+    exit 0
+fi
 
 # 运行主函数
 main
