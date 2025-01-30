@@ -7,12 +7,14 @@ if [ ! -t 0 ]; then
     mkdir -p "$WORK_DIR"
     cd "$WORK_DIR"
     
-    # 保存脚本
-    tee setup_cloudfront.sh > /dev/null
+    # 保存脚本并设置权限
+    cat > setup_cloudfront.sh
     chmod +x setup_cloudfront.sh
     
-    # 执行保存的脚本
-    exec ./setup_cloudfront.sh
+    # 提示用户
+    echo -e "\n${GREEN}=== 安装完成 ===${NC}"
+    echo -e "请执行以下命令进入管理界面："
+    echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh"
     exit 0
 fi
 
@@ -889,11 +891,13 @@ main() {
         mkdir -p "$WORK_DIR"
         
         # 保存脚本
-        tee "$WORK_DIR/setup_cloudfront.sh" > /dev/null
+        cat > "$WORK_DIR/setup_cloudfront.sh"
         chmod +x "$WORK_DIR/setup_cloudfront.sh"
         
-        # 直接进入菜单
-        show_menu
+        # 提示用户
+        echo -e "\n${GREEN}=== 安装完成 ===${NC}"
+        echo -e "请执行以下命令进入管理界面："
+        echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh"
         exit 0
     fi
     
