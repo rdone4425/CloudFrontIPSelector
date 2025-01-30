@@ -417,12 +417,6 @@ handle_sigint() {
 
 # 主菜单
 show_menu() {
-    # 确保是在终端中运行
-    if [ ! -t 0 ] || [ ! -t 1 ]; then
-        error "请在终端中运行此命令"
-        exit 1
-    fi
-
     # 获取compose命令(只在第一次调用时获取)
     if [ -z "$COMPOSE_CMD" ]; then
         COMPOSE_CMD=$(get_compose_cmd)
@@ -433,7 +427,7 @@ show_menu() {
     fi
 
     # 重置终端设置
-    stty sane
+    stty sane 2>/dev/null || true
 
     while true; do
         clear
@@ -451,11 +445,11 @@ show_menu() {
             echo -e "${YELLOW}服务未运行${NC}"
         fi
         
-        echo -n "请选择操作 [0-5]: "
-        read choice </dev/tty
+        # 尝试重新打开终端
+        exec < /dev/tty 2>/dev/null || true
         
-        # 调试信息
-        echo "DEBUG: 输入值: '$choice'"
+        echo -n "请选择操作 [0-5]: "
+        read choice
         
         # 检查是否为空
         if [ -z "$choice" ]; then
@@ -583,31 +577,6 @@ main() {
     # 设置信号处理
     trap handle_sigint SIGINT
     
-    # 解析命令行参数
-    local install_only=false
-    local show_result=false
-    local wait_result=false
-    local show_menu_flag=false
-
-    case "$1" in
-        "--help")
-            show_help
-            exit 0
-            ;;
-        "--install")
-            install_only=true
-            ;;
-        "--result")
-            show_result=true
-            ;;
-        "--wait")
-            wait_result=true
-            ;;
-        "--menu")
-            show_menu_flag=true
-            ;;
-    esac
-    
     # 检查是否通过管道执行
     if [ ! -t 0 ]; then
         info "通过管道执行安装..."
@@ -626,15 +595,19 @@ main() {
         create_files
         start_service
         
-        # 等待并显示结果
-        info "等待测试结果..."
-        sleep 5  # 等待服务启动
-        wait_for_result 300 5  # 等待5分钟,至少5个IP
-        
-        # 提示如何进入菜单
-        echo -e "\n${GREEN}=== 安装完成 ===${NC}"
-        echo -e "执行以下命令进入交互式菜单:"
-        echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh --menu"
+        # 尝试重新打开终端并进入菜单
+        if exec < /dev/tty 2>/dev/null; then
+            show_menu
+        else
+            # 如果无法打开终端，则等待结果
+            info "无法打开交互终端，等待测试结果..."
+            sleep 5  # 等待服务启动
+            wait_for_result 300 5  # 等待5分钟,至少5个IP
+            
+            echo -e "\n${GREEN}=== 安装完成 ===${NC}"
+            echo -e "执行以下命令进入交互式菜单:"
+            echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh --menu"
+        fi
         
         exit 0
     fi
