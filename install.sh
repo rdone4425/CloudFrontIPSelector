@@ -1,29 +1,41 @@
 #!/bin/bash
 
+# 创建工作目录
+WORK_DIR="$HOME/cloudfront-docker"
+mkdir -p "$WORK_DIR"
+
+# 下载脚本
+curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/install.sh -o "$WORK_DIR/install.sh"
+chmod +x "$WORK_DIR/install.sh"
+
+# 提示用户
+echo -e "\033[0;32m[INFO]\033[0m 安装完成"
+echo -e "请执行以下命令进入管理界面："
+echo -e "  cd $WORK_DIR && ./install.sh"
+
+exit 0
+
 # 检查是否通过管道执行
 if [ ! -t 0 ]; then
     # 创建工作目录
     WORK_DIR="$HOME/cloudfront-docker"
     mkdir -p "$WORK_DIR"
     
-    # 保存脚本到临时文件
-    TMP_FILE=$(mktemp)
-    cat > "$TMP_FILE"
-    
-    # 确保目录存在
-    mkdir -p "$WORK_DIR"
-    
-    # 复制到目标位置并设置权限
-    mv "$TMP_FILE" "$WORK_DIR/setup_cloudfront.sh"
+    # 保存脚本
+    cat > "$WORK_DIR/setup_cloudfront.sh"
     chmod +x "$WORK_DIR/setup_cloudfront.sh"
+    
+    # 确保文件写入完成
+    sync
     
     # 提示用户
     echo -e "\033[0;32m[INFO]\033[0m 安装完成"
     echo -e "请执行以下命令进入管理界面："
     echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh"
     
-    # 正常退出
-    exit 0
+    # 等待一下再退出
+    sleep 1
+    exit
 fi
 
 # 颜色定义
@@ -292,9 +304,9 @@ check_update() {
 update_script() {
     info "开始更新..."
     local temp_file="/tmp/cloudfront_update.sh"
-    if curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/1.sh -o "$temp_file"; then
+    if curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/install.sh -o "$temp_file"; then
         chmod +x "$temp_file"
-        cp "$temp_file" "$WORK_DIR/setup_cloudfront.sh"
+        cp "$temp_file" "$WORK_DIR/install.sh"
         info "更新完成,请重新运行脚本"
         exit 0
     else
