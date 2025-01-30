@@ -351,19 +351,36 @@ if __name__ == "__main__":
 EOL
 }
 
+# 检查docker compose命令
+get_compose_cmd() {
+    if command -v docker-compose &> /dev/null; then
+        echo "docker-compose"
+    elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
+        echo "docker compose"
+    else
+        echo ""
+    fi
+}
+
 # 启动服务
 start_service() {
     info "启动CloudFront IP选择器服务..."
     cd "$WORK_DIR"
     
     if [ -f "docker-compose.yml" ]; then
-        docker-compose down 2>/dev/null
-        docker-compose up -d
+        COMPOSE_CMD=$(get_compose_cmd)
+        if [ -z "$COMPOSE_CMD" ]; then
+            error "未找到可用的docker compose命令"
+            exit 1
+        fi
+        
+        $COMPOSE_CMD down 2>/dev/null
+        $COMPOSE_CMD up -d
         
         if [ $? -eq 0 ]; then
             info "服务启动成功"
             info "使用以下命令查看日志:"
-            echo "  cd $WORK_DIR && docker-compose logs -f"
+            echo "  cd $WORK_DIR && $COMPOSE_CMD logs -f"
             info "结果文件位置:"
             echo "  $DATA_DIR/result.txt"
         else
@@ -388,16 +405,18 @@ show_menu() {
     
     read -p "请选择操作 [0-5]: " choice
     
+    COMPOSE_CMD=$(get_compose_cmd)
+    
     case $choice in
         1)
             start_service
             ;;
         2)
-            cd "$WORK_DIR" && docker-compose down
+            cd "$WORK_DIR" && $COMPOSE_CMD down
             info "服务已停止"
             ;;
         3)
-            cd "$WORK_DIR" && docker-compose logs -f
+            cd "$WORK_DIR" && $COMPOSE_CMD logs -f
             ;;
         4)
             if [ -f "$DATA_DIR/result.txt" ]; then
@@ -408,7 +427,7 @@ show_menu() {
             fi
             ;;
         5)
-            cd "$WORK_DIR" && docker-compose restart
+            cd "$WORK_DIR" && $COMPOSE_CMD restart
             info "服务已重启"
             ;;
         0)
