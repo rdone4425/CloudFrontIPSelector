@@ -510,63 +510,154 @@ show_menu() {
     done
 }
 
+# 等待结果函数
+wait_for_result() {
+    local timeout=${1:-300}  # 默认等待5分钟
+    local start_time=$(date +%s)
+    local min_ips=${2:-5}    # 默认至少5个IP
+
+    info "等待测试结果..."
+    while true; do
+        if [ -f "$DATA_DIR/result.txt" ]; then
+            count=$(wc -l < "$DATA_DIR/result.txt")
+            if [ "$count" -ge "$min_ips" ]; then
+                info "已找到 $count 个优质IP:"
+                echo -e "\n${GREEN}=== 测试结果 ===${NC}"
+                cat "$DATA_DIR/result.txt"
+                return 0
+            fi
+        fi
+
+        # 检查超时
+        current_time=$(date +%s)
+        elapsed=$((current_time - start_time))
+        if [ $elapsed -ge $timeout ]; then
+            warn "等待超时,已等待${timeout}秒"
+            if [ -f "$DATA_DIR/result.txt" ]; then
+                info "当前找到的IP:"
+                cat "$DATA_DIR/result.txt"
+            else
+                warn "暂未找到合适的IP"
+            fi
+            return 1
+        fi
+
+        # 显示进度
+        if [ $((elapsed % 10)) -eq 0 ]; then
+            info "正在测试中,已等待 $elapsed 秒..."
+        fi
+        sleep 2
+    done
+}
+
+# 显示帮助信息
+show_help() {
+    echo -e "\n${GREEN}CloudFront IP选择器${NC} - 使用说明"
+    echo -e "\n用法:"
+    echo "  $0 [选项]"
+    echo -e "\n选项:"
+    echo "  --help     显示此帮助信息"
+    echo "  --menu     进入交互式菜单"
+    echo "  --wait     等待测试结果后显示"
+    echo "  --result   直接显示当前结果"
+    echo "  --install  仅安装不启动服务"
+    echo -e "\n示例:"
+    echo "  $0 --wait     # 安装并等待测试结果"
+    echo "  $0 --menu     # 进入交互式菜单"
+    echo "  $0 --result   # 显示当前测试结果"
+}
+
+# 显示当前结果
+show_current_result() {
+    if [ -f "$DATA_DIR/result.txt" ]; then
+        echo -e "\n${GREEN}=== 当前测试结果 ===${NC}"
+        cat "$DATA_DIR/result.txt"
+        echo -e "\n结果文件位置: $DATA_DIR/result.txt"
+    else
+        warn "暂无测试结果"
+    fi
+}
+
 # 主函数
 main() {
     # 设置信号处理
     trap handle_sigint SIGINT
     
+    # 解析命令行参数
+    local install_only=false
+    local show_result=false
+    local wait_result=false
+    local show_menu_flag=false
+
+    case "$1" in
+        "--help")
+            show_help
+            exit 0
+            ;;
+        "--install")
+            install_only=true
+            ;;
+        "--result")
+            show_result=true
+            ;;
+        "--wait")
+            wait_result=true
+            ;;
+        "--menu")
+            show_menu_flag=true
+            ;;
+    esac
+    
     # 检查是否通过管道执行
     if [ ! -t 0 ]; then
+        info "通过管道执行安装..."
+        
+        # 创建工作目录
+        WORK_DIR="$HOME/cloudfront-docker"
+        mkdir -p "$WORK_DIR"
+        
+        # 保存脚本
+        tee "$WORK_DIR/setup_cloudfront.sh" > /dev/null
+        chmod +x "$WORK_DIR/setup_cloudfront.sh"
+        
+        # 执行安装并进入菜单
         info "开始安装CloudFront IP选择器..."
-        
-        # 检查并安装Docker
         install_docker
-        
-        # 创建必要的文件
         create_files
-        
-        # 启动服务
         start_service
         
-        # 下载并保存脚本
-        info "保存脚本..."
-        curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/1.sh -o "$WORK_DIR/setup_cloudfront.sh"
-        if [ $? -eq 0 ]; then
-            chmod +x "$WORK_DIR/setup_cloudfront.sh"
-            
-            # 提示用户如何进入交互模式
-            echo -e "\n${GREEN}=== 安装完成 ===${NC}"
-            echo -e "请执行以下命令进入交互模式："
-            echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh --menu"
-        else
-            error "脚本保存失败"
-            echo -e "请手动下载脚本："
-            echo -e "  cd $WORK_DIR"
-            echo -e "  curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/1.sh -o setup_cloudfront.sh"
-            echo -e "  chmod +x setup_cloudfront.sh"
-        fi
-        
+        # 直接进入菜单
+        show_menu
         exit 0
-    else
-        # 检查是否是菜单模式
-        if [ "$1" = "--menu" ]; then
-            # 显示菜单
-            show_menu
+    fi
+    
+    # 正常执行流程
+    if [ "$show_result" = true ]; then
+        show_current_result
+        exit 0
+    fi
+    
+    if [ "$show_menu_flag" = true ]; then
+        show_menu
+        exit 0
+    fi
+    
+    # 安装流程
+    info "开始安装CloudFront IP选择器..."
+    install_docker
+    create_files
+    
+    if [ "$install_only" = false ]; then
+        start_service
+        
+        if [ "$wait_result" = true ]; then
+            wait_for_result 300 5  # 等待5分钟,至少5个IP
         else
-            # 直接执行完整流程
-            info "开始安装CloudFront IP选择器..."
-            
-            # 检查并安装Docker
-            install_docker
-            
-            # 创建必要的文件
-            create_files
-            
-            # 启动服务
-            start_service
-            
-            # 显示菜单
-            show_menu
+            info "服务已启动,请稍后查看结果"
+            echo -e "\n执行以下命令查看结果:"
+            echo -e "  $0 --result"
+            echo -e "\n或者进入交互式菜单:"
+            echo -e "  $0 --menu"
         fi
     fi
 }
