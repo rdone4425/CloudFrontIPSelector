@@ -145,12 +145,48 @@ install_docker() {
                 opkg install docker-compose
                 ;;
             ubuntu|debian|redhat)
+                # 首先尝试安装 Docker Compose 插件
+                if [ "$SYS_TYPE" = "ubuntu" ] || [ "$SYS_TYPE" = "debian" ]; then
+                    apt-get install -y docker-compose-plugin || true
+                elif [ "$SYS_TYPE" = "redhat" ]; then
+                    yum install -y docker-compose-plugin || true
+                fi
+                
+                # 如果插件安装失败，安装独立版本
                 if ! command -v docker compose &> /dev/null; then
+                    info "安装独立版本 docker-compose..."
+                    # 确保目标目录存在且有写权限
+                    if [ ! -w "/usr/local/bin" ]; then
+                        error "没有写入权限，尝试使用sudo"
+                        exit 1
+                    fi
+                    
+                    # 下载docker-compose
                     curl -L "https://github.com/docker/compose/releases/download/v2.5.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                    
+                    # 检查下载是否成功
+                    if [ ! -f "/usr/local/bin/docker-compose" ]; then
+                        error "docker-compose 下载失败"
+                        exit 1
+                    fi
+                    
+                    # 添加执行权限
                     chmod +x /usr/local/bin/docker-compose
+                    
+                    # 验证安装
+                    if ! command -v docker-compose &> /dev/null; then
+                        error "docker-compose 安装失败"
+                        exit 1
+                    fi
                 fi
                 ;;
         esac
+        
+        # 最终验证
+        if ! check_command docker-compose && ! command -v docker compose &> /dev/null; then
+            error "docker-compose 安装失败"
+            exit 1
+        fi
     fi
     info "docker-compose已安装"
 }
