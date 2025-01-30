@@ -401,6 +401,12 @@ handle_sigint() {
 
 # 主菜单
 show_menu() {
+    # 确保是在终端中运行
+    if [ ! -t 0 ] || [ ! -t 1 ]; then
+        error "请在终端中运行此命令"
+        exit 1
+    fi
+
     # 获取compose命令(只在第一次调用时获取)
     if [ -z "$COMPOSE_CMD" ]; then
         COMPOSE_CMD=$(get_compose_cmd)
@@ -410,7 +416,11 @@ show_menu() {
         fi
     fi
 
+    # 重置终端设置
+    stty sane
+
     while true; do
+        clear
         echo -e "\n${GREEN}=== CloudFront IP选择器 ===${NC}"
         echo "1. 启动服务"
         echo "2. 停止服务"
@@ -418,38 +428,67 @@ show_menu() {
         echo "4. 查看结果"
         echo "5. 重启服务"
         echo "0. 退出"
+        echo -e "\n当前状态:"
+        if docker ps | grep -q "cloudfront-selector"; then
+            echo -e "${GREEN}服务正在运行${NC}"
+        else
+            echo -e "${YELLOW}服务未运行${NC}"
+        fi
         
-        read -p "请选择操作 [0-5]: " choice
+        echo -n "请选择操作 [0-5]: "
+        read choice </dev/tty
+        
+        # 调试信息
+        echo "DEBUG: 输入值: '$choice'"
+        
+        # 检查是否为空
+        if [ -z "$choice" ]; then
+            warn "请输入一个数字"
+            sleep 1
+            continue
+        fi
+        
+        # 检查是否为数字
+        if ! [[ "$choice" =~ ^[0-5]$ ]]; then
+            warn "请输入0-5之间的数字"
+            sleep 1
+            continue
+        fi
         
         case $choice in
             1)
                 start_service
+                sleep 2
                 ;;
             2)
                 cd "$WORK_DIR" && $COMPOSE_CMD down
                 info "服务已停止"
+                sleep 2
                 ;;
             3)
+                clear
                 cd "$WORK_DIR" && $COMPOSE_CMD logs -f
                 ;;
             4)
+                clear
                 if [ -f "$DATA_DIR/result.txt" ]; then
                     echo -e "\n${GREEN}=== 测试结果 ===${NC}"
                     cat "$DATA_DIR/result.txt"
+                    echo -e "\n按回车键继续..."
+                    read </dev/tty
                 else
                     warn "结果文件不存在"
+                    sleep 2
                 fi
                 ;;
             5)
                 cd "$WORK_DIR" && $COMPOSE_CMD restart
                 info "服务已重启"
+                sleep 2
                 ;;
             0)
                 echo -e "${GREEN}感谢使用，再见！${NC}"
                 exit 0
-                ;;
-            *)
-                warn "请输入0-5之间的数字"
                 ;;
         esac
     done
