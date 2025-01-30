@@ -501,6 +501,10 @@ main() {
     
     # 检查是否通过管道执行
     if [ ! -t 0 ]; then
+        # 将脚本内容保存到临时文件
+        TEMP_SCRIPT=$(mktemp)
+        cat > "$TEMP_SCRIPT"
+        
         info "开始安装CloudFront IP选择器..."
         
         # 检查并安装Docker
@@ -512,14 +516,15 @@ main() {
         # 启动服务
         start_service
         
+        # 保存脚本到目标位置
+        cp "$TEMP_SCRIPT" "$WORK_DIR/setup_cloudfront.sh"
+        chmod +x "$WORK_DIR/setup_cloudfront.sh"
+        rm -f "$TEMP_SCRIPT"
+        
         # 提示用户如何进入交互模式
         echo -e "\n${GREEN}=== 安装完成 ===${NC}"
         echo -e "请执行以下命令进入交互模式："
         echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh --menu"
-        
-        # 保存当前脚本
-        cp "$0" "$WORK_DIR/setup_cloudfront.sh"
-        chmod +x "$WORK_DIR/setup_cloudfront.sh"
         
         exit 0
     else
