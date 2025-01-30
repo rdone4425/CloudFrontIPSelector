@@ -59,6 +59,62 @@ check_command() {
     return 0
 }
 
+# 安装docker-compose
+install_docker_compose() {
+    info "检查docker-compose..."
+    COMPOSE_INSTALLED=0
+    
+    # 检查docker compose插件
+    if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+        info "docker compose插件已安装"
+        COMPOSE_INSTALLED=1
+    else
+        # 检查独立版本
+        if command -v docker-compose &> /dev/null; then
+            info "docker-compose已安装"
+            COMPOSE_INSTALLED=1
+        else
+            info "安装docker-compose..."
+            case $SYS_TYPE in
+                openwrt)
+                    opkg install docker-compose
+                    ;;
+                ubuntu|debian)
+                    # 安装插件版本
+                    apt-get update
+                    apt-get install -y docker-compose-plugin
+                    
+                    # 如果插件安装失败，安装独立版本
+                    if ! docker compose version &> /dev/null; then
+                        curl -L "https://github.com/docker/compose/releases/download/v2.5.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                        chmod +x /usr/local/bin/docker-compose
+                    fi
+                    ;;
+                redhat)
+                    yum install -y docker-compose-plugin
+                    
+                    # 如果插件安装失败，安装独立版本
+                    if ! docker compose version &> /dev/null; then
+                        curl -L "https://github.com/docker/compose/releases/download/v2.5.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                        chmod +x /usr/local/bin/docker-compose
+                    fi
+                    ;;
+            esac
+            
+            # 验证安装
+            if command -v docker-compose &> /dev/null || (command -v docker &> /dev/null && docker compose version &> /dev/null); then
+                info "docker-compose安装成功"
+                COMPOSE_INSTALLED=1
+            else
+                error "docker-compose安装失败"
+                return 1
+            fi
+        fi
+    fi
+    
+    return 0
+}
+
 # 安装Docker
 install_docker() {
     info "检查Docker安装..."
@@ -148,57 +204,7 @@ install_docker() {
     info "Docker已安装"
     
     # 安装docker-compose
-    if ! check_command docker-compose; then
-        info "安装docker-compose..."
-        case $SYS_TYPE in
-            openwrt)
-                opkg install docker-compose
-                ;;
-            ubuntu|debian|redhat)
-                # 首先尝试安装 Docker Compose 插件
-                if [ "$SYS_TYPE" = "ubuntu" ] || [ "$SYS_TYPE" = "debian" ]; then
-                    apt-get install -y docker-compose-plugin || true
-                elif [ "$SYS_TYPE" = "redhat" ]; then
-                    yum install -y docker-compose-plugin || true
-                fi
-                
-                # 如果插件安装失败，安装独立版本
-                if ! command -v docker compose &> /dev/null; then
-                    info "安装独立版本 docker-compose..."
-                    # 确保目标目录存在且有写权限
-                    if [ ! -w "/usr/local/bin" ]; then
-                        error "没有写入权限，尝试使用sudo"
-                        exit 1
-                    fi
-                    
-                    # 下载docker-compose
-                    curl -L "https://github.com/docker/compose/releases/download/v2.5.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-                    
-                    # 检查下载是否成功
-                    if [ ! -f "/usr/local/bin/docker-compose" ]; then
-                        error "docker-compose 下载失败"
-                        exit 1
-                    fi
-                    
-                    # 添加执行权限
-                    chmod +x /usr/local/bin/docker-compose
-                    
-                    # 验证安装
-                    if ! command -v docker-compose &> /dev/null; then
-                        error "docker-compose 安装失败"
-                        exit 1
-                    fi
-                fi
-                ;;
-        esac
-        
-        # 最终验证
-        if ! check_command docker-compose && ! command -v docker compose &> /dev/null; then
-            error "docker-compose 安装失败"
-            exit 1
-        fi
-    fi
-    info "docker-compose已安装"
+    install_docker_compose || exit 1
 }
 
 # 创建必要的目录和文件
