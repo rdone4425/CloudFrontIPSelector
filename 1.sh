@@ -18,9 +18,14 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# 版本信息
+VERSION="1.0.0"
+
 # 工作目录
 WORK_DIR="$HOME/cloudfront-docker"
 DATA_DIR="$WORK_DIR/data"
+CONFIG_FILE="$WORK_DIR/config.conf"
+HISTORY_DIR="$DATA_DIR/history"
 
 # 打印信息
 info() {
@@ -207,16 +212,257 @@ install_docker() {
     install_docker_compose || exit 1
 }
 
+# 创建配置文件
+create_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        cat > "$CONFIG_FILE" << EOL
+# CloudFront IP选择器配置文件
+THRESHOLD=150           # 延迟阈值(ms)
+PING_COUNT=5           # Ping次数
+MIN_IPS=5              # 最少IP数量
+TIMEOUT=300            # 等待超时时间(秒)
+TEST_PARALLEL=5        # 并行测试数量
+SAVE_HISTORY=true      # 是否保存历史记录
+MAX_LOG_SIZE=10485760  # 日志文件最大大小(字节)
+EOL
+    fi
+}
+
+# 加载配置
+load_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+    fi
+}
+
+# 保存历史结果
+save_history() {
+    if [ "$SAVE_HISTORY" = "true" ] && [ -f "$DATA_DIR/result.txt" ]; then
+        mkdir -p "$HISTORY_DIR"
+        local timestamp=$(date +%Y%m%d_%H%M%S)
+        cp "$DATA_DIR/result.txt" "$HISTORY_DIR/result_${timestamp}.txt"
+        info "结果已保存到历史记录"
+    fi
+}
+
+# 日志轮转
+rotate_logs() {
+    local log_file="$DATA_DIR/cloudfront.log"
+    if [ -f "$log_file" ]; then
+        local size=$(stat -f%z "$log_file" 2>/dev/null || stat -c%s "$log_file" 2>/dev/null)
+        if [ -n "$size" ] && [ $size -gt ${MAX_LOG_SIZE:-10485760} ]; then
+            mv "$log_file" "${log_file}.1"
+            touch "$log_file"
+            info "日志已轮转"
+        fi
+    fi
+}
+
+# 检查更新
+check_update() {
+    info "检查更新..."
+    local latest_version=$(curl -s https://api.github.com/repos/rdone4425/CloudFrontIPSelector/releases/latest | grep tag_name | cut -d'"' -f4)
+    if [ -n "$latest_version" ] && [ "$latest_version" != "$VERSION" ]; then
+        info "发现新版本: $latest_version (当前版本: $VERSION)"
+        echo -n "是否更新? [y/N] "
+        read -r answer
+        if [[ $answer =~ ^[Yy]$ ]]; then
+            update_script
+        fi
+    else
+        info "已是最新版本"
+    fi
+}
+
+# 更新脚本
+update_script() {
+    info "开始更新..."
+    local temp_file="/tmp/cloudfront_update.sh"
+    if curl -sSL https://raw.githubusercontent.com/rdone4425/CloudFrontIPSelector/main/1.sh -o "$temp_file"; then
+        chmod +x "$temp_file"
+        cp "$temp_file" "$WORK_DIR/setup_cloudfront.sh"
+        info "更新完成,请重新运行脚本"
+        exit 0
+    else
+        error "更新失败"
+    fi
+}
+
+# 备份数据
+backup_data() {
+    local backup_dir="$WORK_DIR/backups"
+    mkdir -p "$backup_dir"
+    local backup_file="$backup_dir/cloudfront_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+    
+    cd "$WORK_DIR" && tar -czf "$backup_file" data config.conf 2>/dev/null
+    if [ $? -eq 0 ]; then
+        info "备份已保存到: $backup_file"
+    else
+        error "备份失败"
+    fi
+}
+
+# 恢复备份
+restore_backup() {
+    local backup_dir="$WORK_DIR/backups"
+    if [ ! -d "$backup_dir" ]; then
+        error "没有找到备份目录"
+        return 1
+    fi
+    
+    echo -e "\n${GREEN}可用的备份:${NC}"
+    local i=1
+    local backups=()
+    while IFS= read -r file; do
+        echo "$i) $(basename "$file")"
+        backups[$i]="$file"
+        ((i++))
+    done < <(ls -1 "$backup_dir"/*.tar.gz 2>/dev/null)
+    
+    if [ ${#backups[@]} -eq 0 ]; then
+        error "没有找到备份文件"
+        return 1
+    fi
+    
+    echo -n "请选择要恢复的备份 [1-$((i-1))]: "
+    read -r choice
+    
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -lt "$i" ]; then
+        local backup_file="${backups[$choice]}"
+        cd "$WORK_DIR" && tar -xzf "$backup_file"
+        if [ $? -eq 0 ]; then
+            info "已从 $(basename "$backup_file") 恢复数据"
+        else
+            error "恢复失败"
+        fi
+    else
+        error "无效的选择"
+    fi
+}
+
+# 显示历史记录
+show_history() {
+    if [ ! -d "$HISTORY_DIR" ]; then
+        warn "没有历史记录"
+        return
+    fi
+    
+    echo -e "\n${GREEN}历史记录:${NC}"
+    local i=1
+    local history_files=()
+    while IFS= read -r file; do
+        local timestamp=$(basename "$file" | sed 's/result_\([0-9]\{8\}_[0-9]\{6\}\)\.txt/\1/')
+        local formatted_time=$(date -d "${timestamp:0:8} ${timestamp:9:2}:${timestamp:11:2}:${timestamp:13:2}" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "$timestamp")
+        echo "$i) $formatted_time"
+        history_files[$i]="$file"
+        ((i++))
+    done < <(ls -1 "$HISTORY_DIR"/result_*.txt 2>/dev/null)
+    
+    if [ ${#history_files[@]} -eq 0 ]; then
+        warn "没有历史记录"
+        return
+    fi
+    
+    echo -n "请选择要查看的记录 [1-$((i-1))]: "
+    read -r choice
+    
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -lt "$i" ]; then
+        echo -e "\n${GREEN}=== 历史记录 ====${NC}"
+        cat "${history_files[$choice]}"
+        echo -e "\n按回车键继续..."
+        read
+    else
+        error "无效的选择"
+    fi
+}
+
+# 配置参数
+configure_settings() {
+    while true; do
+        clear
+        echo -e "\n${GREEN}=== 配置参数 ===${NC}"
+        echo "1. 延迟阈值 (当前: ${THRESHOLD:-150}ms)"
+        echo "2. Ping次数 (当前: ${PING_COUNT:-5})"
+        echo "3. 最少IP数量 (当前: ${MIN_IPS:-5})"
+        echo "4. 等待超时时间 (当前: ${TIMEOUT:-300}秒)"
+        echo "5. 并行测试数量 (当前: ${TEST_PARALLEL:-5})"
+        echo "6. 保存历史记录 (当前: ${SAVE_HISTORY:-true})"
+        echo "0. 返回主菜单"
+        
+        echo -n "请选择要修改的选项 [0-6]: "
+        read -r choice
+        
+        case $choice in
+            1)
+                echo -n "请输入新的延迟阈值(ms): "
+                read -r value
+                if [[ "$value" =~ ^[0-9]+$ ]]; then
+                    sed -i "s/THRESHOLD=.*/THRESHOLD=$value/" "$CONFIG_FILE"
+                fi
+                ;;
+            2)
+                echo -n "请输入新的Ping次数: "
+                read -r value
+                if [[ "$value" =~ ^[0-9]+$ ]]; then
+                    sed -i "s/PING_COUNT=.*/PING_COUNT=$value/" "$CONFIG_FILE"
+                fi
+                ;;
+            3)
+                echo -n "请输入新的最少IP数量: "
+                read -r value
+                if [[ "$value" =~ ^[0-9]+$ ]]; then
+                    sed -i "s/MIN_IPS=.*/MIN_IPS=$value/" "$CONFIG_FILE"
+                fi
+                ;;
+            4)
+                echo -n "请输入新的超时时间(秒): "
+                read -r value
+                if [[ "$value" =~ ^[0-9]+$ ]]; then
+                    sed -i "s/TIMEOUT=.*/TIMEOUT=$value/" "$CONFIG_FILE"
+                fi
+                ;;
+            5)
+                echo -n "请输入新的并行测试数量: "
+                read -r value
+                if [[ "$value" =~ ^[0-9]+$ ]]; then
+                    sed -i "s/TEST_PARALLEL=.*/TEST_PARALLEL=$value/" "$CONFIG_FILE"
+                fi
+                ;;
+            6)
+                echo -n "是否保存历史记录 (true/false): "
+                read -r value
+                if [[ "$value" =~ ^(true|false)$ ]]; then
+                    sed -i "s/SAVE_HISTORY=.*/SAVE_HISTORY=$value/" "$CONFIG_FILE"
+                fi
+                ;;
+            0)
+                return
+                ;;
+            *)
+                warn "无效的选择"
+                sleep 1
+                ;;
+        esac
+        
+        load_config
+    done
+}
+
 # 创建必要的目录和文件
 create_files() {
     info "创建工作目录..."
     mkdir -p "$WORK_DIR"
     mkdir -p "$DATA_DIR"
+    mkdir -p "$HISTORY_DIR"
+    
+    # 创建配置文件
+    create_config
+    
+    # 加载配置
+    load_config
     
     info "创建docker-compose.yml..."
-    cat > "$WORK_DIR/docker-compose.yml" << 'EOL'
-version: '3'
-
+    cat > "$WORK_DIR/docker-compose.yml" << EOL
 services:
   cloudfront-selector:
     image: docker.442595.xyz/python:3.9-alpine
@@ -226,9 +472,10 @@ services:
       - ./data:/data
       - ./cloudfront_selector.py:/app/cloudfront_selector.py
     environment:
-      - THRESHOLD=150
-      - PING_COUNT=5
+      - THRESHOLD=${THRESHOLD:-150}
+      - PING_COUNT=${PING_COUNT:-5}
       - RESULT_DIR=/data
+      - TEST_PARALLEL=${TEST_PARALLEL:-5}
     command: >
       sh -c "
         apk add --no-cache curl iputils jq bc &&
@@ -237,7 +484,7 @@ services:
       "
     restart: unless-stopped
 EOL
-    
+
     info "创建Python脚本..."
     cat > "$WORK_DIR/cloudfront_selector.py" << 'EOL'
 #!/usr/bin/env python3
@@ -248,11 +495,13 @@ import subprocess
 import requests
 from datetime import datetime
 from netaddr import IPNetwork
+from concurrent.futures import ThreadPoolExecutor
 
 class CloudFrontSelector:
     def __init__(self):
         self.threshold = int(os.getenv('THRESHOLD', 150))
         self.ping_count = int(os.getenv('PING_COUNT', 5))
+        self.test_parallel = int(os.getenv('TEST_PARALLEL', 5))
         self.result_dir = os.getenv('RESULT_DIR', '/data')
         self.result_file = f"{self.result_dir}/result.txt"
         self.log_file = f"{self.result_dir}/cloudfront.log"
@@ -305,13 +554,22 @@ class CloudFrontSelector:
             network = IPNetwork(ip_range)
             test_ips = [str(ip) for ip in list(network)[1:6]]
             
-            for ip in test_ips:
-                if not self.is_cn_ip(ip):
-                    self.log(f"测试IP: {ip}")
-                    latency = self.test_ip(ip)
-                    if latency and latency < self.threshold:
-                        results.append((ip, latency))
-                        self.log(f"发现低延迟IP: {ip} ({latency:.1f}ms)")
+            with ThreadPoolExecutor(max_workers=self.test_parallel) as executor:
+                futures = []
+                for ip in test_ips:
+                    if not self.is_cn_ip(ip):
+                        self.log(f"测试IP: {ip}")
+                        futures.append(executor.submit(self.test_ip, ip))
+                
+                for ip, future in zip(test_ips, futures):
+                    try:
+                        latency = future.result()
+                        if latency and latency < self.threshold:
+                            results.append((ip, latency))
+                            self.log(f"发现低延迟IP: {ip} ({latency:.1f}ms)")
+                    except Exception as e:
+                        self.log(f"测试IP {ip} 时出错: {str(e)}")
+        
         except Exception as e:
             self.log(f"测试IP段 {ip_range} 时出错: {str(e)}")
         return results
@@ -330,6 +588,7 @@ class CloudFrontSelector:
             response = requests.get('https://ip-ranges.amazonaws.com/ip-ranges.json')
             data = response.json()
             
+            # 优先测试亚洲区域
             for prefix in data['prefixes']:
                 if prefix['service'] == 'CLOUDFRONT':
                     ip_range = prefix['ip_prefix']
@@ -340,6 +599,7 @@ class CloudFrontSelector:
                         results = self.test_ip_range(ip_range)
                         all_results.extend(results)
             
+            # 如果找到的IP不够，测试其他地区
             if len(all_results) < 10:
                 self.log("测试其他地区的IP...")
                 for prefix in data['prefixes']:
@@ -415,29 +675,120 @@ handle_sigint() {
     exit 0
 }
 
-# 主菜单
-show_menu() {
-    # 获取compose命令(只在第一次调用时获取)
-    if [ -z "$COMPOSE_CMD" ]; then
-        COMPOSE_CMD=$(get_compose_cmd)
-        if [ -z "$COMPOSE_CMD" ]; then
-            error "未找到可用的docker compose命令"
-            exit 1
-        fi
+# 检查Docker状态
+check_docker_status() {
+    if command -v docker &> /dev/null; then
+        echo -e "${GREEN}已安装${NC}"
+        return 0
+    else
+        echo -e "${RED}未安装${NC}"
+        return 1
     fi
+}
 
-    # 重置终端设置
-    stty sane 2>/dev/null || true
+# 检查Docker Compose状态
+check_compose_status() {
+    if command -v docker-compose &> /dev/null || (command -v docker &> /dev/null && docker compose version &> /dev/null); then
+        echo -e "${GREEN}已安装${NC}"
+        return 0
+    else
+        echo -e "${RED}未安装${NC}"
+        return 1
+    fi
+}
 
+# 安装Docker和Docker Compose
+install_docker_menu() {
     while true; do
         clear
-        echo -e "\n${GREEN}=== CloudFront IP选择器 ===${NC}"
+        echo -e "\n${GREEN}=== Docker 安装 ===${NC}"
+        echo -e "Docker 状态: $(check_docker_status)"
+        echo -e "Docker Compose 状态: $(check_compose_status)"
+        echo -e "\n请选择安装方式:"
+        echo "1. 使用官方安装脚本 (推荐)"
+        echo "2. 使用系统包管理器"
+        echo "0. 返回主菜单"
+        
+        echo -n "请选择 [0-2]: "
+        read -r choice
+        
+        case $choice in
+            1)
+                info "使用官方脚本安装Docker..."
+                curl -fsSL https://get.docker.com | sh
+                if [ $? -eq 0 ]; then
+                    info "Docker安装成功"
+                    # 启动Docker服务
+                    systemctl enable docker || true
+                    systemctl start docker || service docker start
+                    # 安装Docker Compose
+                    install_docker_compose
+                else
+                    error "Docker安装失败"
+                fi
+                sleep 2
+                ;;
+            2)
+                info "使用包管理器安装Docker..."
+                install_docker
+                sleep 2
+                ;;
+            0)
+                return
+                ;;
+            *)
+                warn "无效的选择"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+# 主菜单
+show_menu() {
+    while true; do
+        clear
+        echo -e "\n${GREEN}=== CloudFront IP选择器 v${VERSION} ===${NC}"
+        echo -e "\n系统状态:"
+        echo -e "Docker: $(check_docker_status)"
+        echo -e "Docker Compose: $(check_compose_status)"
+        
+        if ! check_command docker || ! (command -v docker-compose &> /dev/null || docker compose version &> /dev/null); then
+            echo -e "\n${YELLOW}请先安装 Docker 和 Docker Compose${NC}"
+            echo "1. 安装 Docker"
+            echo "0. 退出"
+            
+            echo -n "请选择操作 [0-1]: "
+            read -r choice
+            
+            case $choice in
+                1)
+                    install_docker_menu
+                    ;;
+                0)
+                    echo -e "${GREEN}感谢使用，再见！${NC}"
+                    exit 0
+                    ;;
+                *)
+                    warn "请输入0-1之间的数字"
+                    sleep 1
+                    ;;
+            esac
+            continue
+        fi
+        
+        echo -e "\n功能菜单:"
         echo "1. 启动服务"
         echo "2. 停止服务"
         echo "3. 查看日志"
         echo "4. 查看结果"
         echo "5. 重启服务"
+        echo "6. 查看历史记录"
+        echo "7. 配置参数"
+        echo "8. 备份/恢复"
+        echo "9. 检查更新"
         echo "0. 退出"
+        
         echo -e "\n当前状态:"
         if docker ps | grep -q "cloudfront-selector"; then
             echo -e "${GREEN}服务正在运行${NC}"
@@ -445,28 +796,16 @@ show_menu() {
             echo -e "${YELLOW}服务未运行${NC}"
         fi
         
-        # 尝试重新打开终端
-        exec < /dev/tty 2>/dev/null || true
+        rotate_logs
         
-        echo -n "请选择操作 [0-5]: "
-        read choice
-        
-        # 检查是否为空
-        if [ -z "$choice" ]; then
-            warn "请输入一个数字"
-            sleep 1
-            continue
-        fi
-        
-        # 检查是否为数字
-        if ! [[ "$choice" =~ ^[0-5]$ ]]; then
-            warn "请输入0-5之间的数字"
-            sleep 1
-            continue
-        fi
+        echo -n "请选择操作 [0-9]: "
+        read -r choice
         
         case $choice in
             1)
+                if [ ! -f "$WORK_DIR/docker-compose.yml" ]; then
+                    create_files
+                fi
                 start_service
                 sleep 2
                 ;;
@@ -484,8 +823,9 @@ show_menu() {
                 if [ -f "$DATA_DIR/result.txt" ]; then
                     echo -e "\n${GREEN}=== 测试结果 ===${NC}"
                     cat "$DATA_DIR/result.txt"
+                    save_history
                     echo -e "\n按回车键继续..."
-                    read </dev/tty
+                    read
                 else
                     warn "结果文件不存在"
                     sleep 2
@@ -496,80 +836,39 @@ show_menu() {
                 info "服务已重启"
                 sleep 2
                 ;;
+            6)
+                show_history
+                ;;
+            7)
+                configure_settings
+                ;;
+            8)
+                clear
+                echo -e "\n${GREEN}=== 备份/恢复 ===${NC}"
+                echo "1. 创建备份"
+                echo "2. 恢复备份"
+                echo "0. 返回"
+                echo -n "请选择操作 [0-2]: "
+                read -r subchoice
+                case $subchoice in
+                    1) backup_data ;;
+                    2) restore_backup ;;
+                esac
+                ;;
+            9)
+                check_update
+                sleep 2
+                ;;
             0)
                 echo -e "${GREEN}感谢使用，再见！${NC}"
                 exit 0
                 ;;
+            *)
+                warn "请输入0-9之间的数字"
+                sleep 1
+                ;;
         esac
     done
-}
-
-# 等待结果函数
-wait_for_result() {
-    local timeout=${1:-300}  # 默认等待5分钟
-    local start_time=$(date +%s)
-    local min_ips=${2:-5}    # 默认至少5个IP
-
-    info "等待测试结果..."
-    while true; do
-        if [ -f "$DATA_DIR/result.txt" ]; then
-            count=$(wc -l < "$DATA_DIR/result.txt")
-            if [ "$count" -ge "$min_ips" ]; then
-                info "已找到 $count 个优质IP:"
-                echo -e "\n${GREEN}=== 测试结果 ===${NC}"
-                cat "$DATA_DIR/result.txt"
-                return 0
-            fi
-        fi
-
-        # 检查超时
-        current_time=$(date +%s)
-        elapsed=$((current_time - start_time))
-        if [ $elapsed -ge $timeout ]; then
-            warn "等待超时,已等待${timeout}秒"
-            if [ -f "$DATA_DIR/result.txt" ]; then
-                info "当前找到的IP:"
-                cat "$DATA_DIR/result.txt"
-            else
-                warn "暂未找到合适的IP"
-            fi
-            return 1
-        fi
-
-        # 显示进度
-        if [ $((elapsed % 10)) -eq 0 ]; then
-            info "正在测试中,已等待 $elapsed 秒..."
-        fi
-        sleep 2
-    done
-}
-
-# 显示帮助信息
-show_help() {
-    echo -e "\n${GREEN}CloudFront IP选择器${NC} - 使用说明"
-    echo -e "\n用法:"
-    echo "  $0 [选项]"
-    echo -e "\n选项:"
-    echo "  --help     显示此帮助信息"
-    echo "  --menu     进入交互式菜单"
-    echo "  --wait     等待测试结果后显示"
-    echo "  --result   直接显示当前结果"
-    echo "  --install  仅安装不启动服务"
-    echo -e "\n示例:"
-    echo "  $0 --wait     # 安装并等待测试结果"
-    echo "  $0 --menu     # 进入交互式菜单"
-    echo "  $0 --result   # 显示当前测试结果"
-}
-
-# 显示当前结果
-show_current_result() {
-    if [ -f "$DATA_DIR/result.txt" ]; then
-        echo -e "\n${GREEN}=== 当前测试结果 ===${NC}"
-        cat "$DATA_DIR/result.txt"
-        echo -e "\n结果文件位置: $DATA_DIR/result.txt"
-    else
-        warn "暂无测试结果"
-    fi
 }
 
 # 主函数
@@ -589,58 +888,13 @@ main() {
         tee "$WORK_DIR/setup_cloudfront.sh" > /dev/null
         chmod +x "$WORK_DIR/setup_cloudfront.sh"
         
-        # 执行安装
-        info "开始安装CloudFront IP选择器..."
-        install_docker
-        create_files
-        start_service
-        
-        # 尝试重新打开终端并进入菜单
-        if exec < /dev/tty 2>/dev/null; then
-            show_menu
-        else
-            # 如果无法打开终端，则等待结果
-            info "无法打开交互终端，等待测试结果..."
-            sleep 5  # 等待服务启动
-            wait_for_result 300 5  # 等待5分钟,至少5个IP
-            
-            echo -e "\n${GREEN}=== 安装完成 ===${NC}"
-            echo -e "执行以下命令进入交互式菜单:"
-            echo -e "  cd $WORK_DIR && ./setup_cloudfront.sh --menu"
-        fi
-        
-        exit 0
-    fi
-    
-    # 正常执行流程
-    if [ "$show_result" = true ]; then
-        show_current_result
-        exit 0
-    fi
-    
-    if [ "$show_menu_flag" = true ]; then
+        # 直接进入菜单
         show_menu
         exit 0
     fi
     
-    # 安装流程
-    info "开始安装CloudFront IP选择器..."
-    install_docker
-    create_files
-    
-    if [ "$install_only" = false ]; then
-        start_service
-        
-        if [ "$wait_result" = true ]; then
-            wait_for_result 300 5  # 等待5分钟,至少5个IP
-        else
-            info "服务已启动,请稍后查看结果"
-            echo -e "\n执行以下命令查看结果:"
-            echo -e "  $0 --result"
-            echo -e "\n或者进入交互式菜单:"
-            echo -e "  $0 --menu"
-        fi
-    fi
+    # 直接显示菜单
+    show_menu
 }
 
 # 直接运行主函数，传递所有参数
