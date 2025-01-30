@@ -1,30 +1,16 @@
 #!/bin/bash
 
-# 保存脚本内容到临时文件
-TEMP_SCRIPT=$(mktemp)
-cat > "$TEMP_SCRIPT"
-
 # 如果是通过管道执行，先保存脚本
 if [ ! -t 0 ]; then
-    SCRIPT_DIR="$HOME/cloudfront-docker"
-    mkdir -p "$SCRIPT_DIR"
-    cd "$SCRIPT_DIR"
+    # 创建工作目录
+    WORK_DIR="$HOME/cloudfront-docker"
+    mkdir -p "$WORK_DIR"
+    cd "$WORK_DIR"
     
-    # 复制临时文件到目标位置
-    cp "$TEMP_SCRIPT" setup_cloudfront.sh
-    chmod +x setup_cloudfront.sh
-    
-    # 清理临时文件
-    rm -f "$TEMP_SCRIPT"
-    
-    # 执行保存的脚本
-    exec bash setup_cloudfront.sh "$@"
+    # 保存脚本并继续执行
+    tee setup_cloudfront.sh | bash
     exit 0
 fi
-
-# 创建目录
-mkdir -p ~/cloudfront-docker
-cd ~/cloudfront-docker
 
 # 颜色定义
 RED='\033[0;31m'
